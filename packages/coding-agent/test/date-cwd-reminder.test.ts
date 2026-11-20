@@ -799,6 +799,48 @@ describe("date-cwd-reminder", () => {
 				expect(placements.length).toBe(sizeBeforeReopen);
 			});
 
+			for (const { revived, label } of [
+				{ revived: false, label: "" },
+				// A parked subagent woken by a message: a new injector reads the journal.
+				{ revived: true, label: " after the session is revived" },
+			] as const) {
+				it(`dates the first persistent turn when a per-call message leads the first request${label}`, () => {
+					const { placements, journal } = createJournal();
+					// A per-call message a context hook puts ahead of the task on the first request only.
+					const leading: Message = { role: "user", content: "CONTEXT", timestamp: 0 };
+					markPerCallContextMessage(leading);
+					const task: Message = { role: "user", content: "task", timestamp: 1 };
+					const call = createAssistantMessage("calling a tool");
+					const result: Message = {
+						role: "toolResult",
+						toolCallId: "call-1",
+						toolName: "read",
+						content: [{ type: "text", text: "notes" }],
+						isError: false,
+						timestamp: 3,
+					};
+					const injector = new DateCwdReminderInjector(journal);
+					const first = injector.transform(
+						{ systemPrompt: ["system"], messages: [leading, task] },
+						"2026-08-14",
+						"/work",
+					);
+
+					expect(first.messages[0]).toBe(leading);
+					expect(first.messages[1]?.content).toBe(`${renderDateCwdReminder("2026-08-14", "/work")}\n\ntask`);
+
+					// The next request leaves the per-call message out: the task must keep the bytes it was sent with.
+					const next = (revived ? new DateCwdReminderInjector(journal) : injector).transform(
+						{ systemPrompt: ["system"], messages: [task, call, result] },
+						"2026-08-14",
+						"/work",
+					);
+
+					expect(next.messages[0]?.content).toBe(first.messages[1]!.content);
+					expect(placements.filter(placement => placement.turn === placement.conversation)).toHaveLength(1);
+				});
+			}
+
 			it("keeps a moved control ahead of a newer control already at its new turn when the session reopens", () => {
 				const { placements, journal } = createJournal();
 				const first: Message = { role: "user", content: "task", timestamp: 1 };

@@ -564,7 +564,7 @@ export class DateCwdReminderInjector {
 	}
 
 	#inject(messages: Message[], reminder: string): Message[] {
-		const firstIndex = messages.findIndex(message => message.role === "user");
+		const firstIndex = messages.findIndex(message => message.role === "user" && !isPerCallContextMessage(message));
 		if (firstIndex === -1) return messages;
 		const firstUser = messages[firstIndex] as UserMessage;
 		const { keys, counts } = this.#keysOf(messages);
